@@ -11,8 +11,10 @@ keeps the table so friends can join from a link on any phone or computer.
 
 ### 1. Put these files on GitHub
 1. Make a free account at github.com and create a **new repository** (private is fine).
-2. Click **Add file, then Upload files**, and drag in everything from this folder
-   (`server.js`, `engine.js`, `package.json`, `package-lock.json`, `render.yaml`, the `public` folder, and the rest).
+2. Click **Add file, then Upload files**, open the unzipped folder, select **all the files inside it**
+   (`index.html`, `server.js`, `engine.js`, `package.json`, `package-lock.json`, `render.yaml`, and the rest)
+   and drag them in. There are no sub-folders, so nothing can get skipped. Check that `index.html` and
+   `server.js` both appear in the list before you commit.
 3. Click **Commit changes**.
 
 ### 2. Create the service on Render
@@ -45,5 +47,5 @@ and becomes the host. Everyone takes a seat, the host deals, and empty seats get
 npm install
 TABLE_PASSWORD=secret npm start      # then open http://localhost:3000
 ```
-`npm run build` rebuilds `public/index.html` from `template.html`, `style.css`, `engine.js` and `app.js`
-(needs Python 3). The prebuilt `public/index.html` is included, so you only need this if you edit those files.
+`npm run build` rebuilds `index.html` from `template.html`, `style.css`, `engine.js` and `app.js`
+(needs Python 3). The prebuilt `index.html` is included, so you only need this if you edit those files.

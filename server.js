@@ -11,7 +11,10 @@ const E = require('./engine.js');
 const PORT = process.env.PORT || 3000;
 const PASSWORD = process.env.TABLE_PASSWORD || '';
 const SCALE = Number(process.env.BOT_DELAY_SCALE) || 1; // tests shrink the bot delays
-const INDEX = fs.readFileSync(path.join(__dirname, 'public', 'index.html'));
+// index.html sits next to this file (an older layout kept it in public/, so look there too)
+const INDEX_PATH = [path.join(__dirname, 'index.html'), path.join(__dirname, 'public', 'index.html')].find(p => fs.existsSync(p));
+if (!INDEX_PATH) { console.error('index.html is missing from the repository. Upload it next to server.js.'); process.exit(1); }
+const INDEX = fs.readFileSync(INDEX_PATH);
 
 let state = null;           // the one table; lives in memory
 const clients = new Set();  // { ws, id, alive }
