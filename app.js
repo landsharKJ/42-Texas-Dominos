@@ -52,48 +52,94 @@ function tallySVG(n) {
   return '<svg viewBox="0 0 ' + w + ' 36" preserveAspectRatio="xMinYMid meet" role="img" aria-label="' + n + ' marks">' + lines.join('') + '</svg>';
 }
 
-/* ---------- shared table over WebSocket ---------- */
-function connectWS() {
+/* ---------- shared table connection ----------
+   Tries a WebSocket first. If that fails to hold, falls back to plain HTTP (event stream down, POST up),
+   which works through nearly every network. Either way, a silent failure is turned into a visible message. */
+const BUILD = '__BUILD__';
+let tp = new URLSearchParams(location.search).get('tp') === 'sse' ? 'sse' : 'ws';
+let es = null, wsFails = 0, lastRx = Date.now(), lastIssue = '';
+const qs = () => 'id=' + encodeURIComponent(S.realId) + '&pw=' + encodeURIComponent(store.get('g42-pw') || '');
+
+function goOffline(reason) {
+  wsOpen = false; waking = true; if (reason) lastIssue = reason;
+  if (S.mode === 'remote' || S.mode === 'connecting') { S.mode = 'offline'; update(); } else if (S.mode !== 'local') update();
+  setTimeout(connectWS, Math.min(1000 * Math.pow(2, retry++), 6000));
+}
+function connected() {
+  retry = 0; wsOpen = true; waking = false; lastRx = Date.now();
+  if (S.mode === 'connecting' || S.mode === 'offline') S.mode = 'remote';
+  if (S.mode !== 'local') update();
+}
+function onServerMessage(m) {
+  lastRx = Date.now(); clearTimeout(replyT); clearTimeout(pongT);
+  if (m.type === 'state') { S.remote = m.state; if (S.mode !== 'local') update(); }
+  else if (m.type === 'error') toast(m.message);
+}
+async function connectWS() {
+  closeTransport();
   const pw = store.get('g42-pw') || '';
+  try {   // a plain HTTP request first: it wakes a sleeping server and checks the password
+    const r = typeof fetch !== 'function' ? { status: 200, ok: true } : await fetch('/auth?pw=' + encodeURIComponent(pw), { cache: 'no-store' });
+    if (r.status === 401) { S.pwBad = !!pw; if (S.mode !== 'local') { S.mode = 'password'; update(); } return; }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+  } catch (e) { goOffline('could not reach the server'); return; }
+  if (tp === 'sse') openSSE(); else openWS();
+}
+function closeTransport() {
+  const o = ws, e = es; ws = null; es = null;
+  if (o) { o.onopen = o.onmessage = o.onclose = o.onerror = null; try { o.close(); } catch (x) { } }
+  if (e) { e.onopen = e.onmessage = e.onerror = null; try { e.close(); } catch (x) { } }
+}
+function openWS() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  let sock;
-  try { sock = new WebSocket(proto + '//' + location.host + '/ws?id=' + encodeURIComponent(S.realId) + '&pw=' + encodeURIComponent(pw)); }
-  catch (e) { setTimeout(connectWS, 3000); return; }
+  let sock, gotState = false, openedAt = 0;
+  try { sock = new WebSocket(proto + '//' + location.host + '/ws?' + qs()); } catch (e) { wsFailed('websocket unavailable'); return; }
   ws = sock;
-  sock.onopen = () => {
-    retry = 0; wsOpen = true; waking = false;
-    if (S.mode === 'connecting' || S.mode === 'offline') S.mode = 'remote';
-    if (S.mode !== 'local') update();
-  };
+  const giveUp = setTimeout(() => { if (!gotState && ws === sock) wsFailed('websocket did not answer'); }, 6000);
+  sock.onopen = () => { openedAt = Date.now(); };
   sock.onmessage = ev => {
     let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
-    clearTimeout(replyT); clearTimeout(pongT);
-    if (m.type === 'state') { S.remote = m.state; if (S.mode !== 'local') update(); }
-    else if (m.type === 'error') toast(m.message);
+    if (m.type === 'state' && !gotState) { gotState = true; clearTimeout(giveUp); wsFails = 0; connected(); }
+    onServerMessage(m);
   };
   sock.onclose = ev => {
+    clearTimeout(giveUp);
+    if (ws !== sock) return;
     wsOpen = false;
-    if (ev.code === 4001) { S.pwBad = !!pw; if (S.mode !== 'local') { S.mode = 'password'; update(); } return; }
-    if (S.mode === 'remote' || S.mode === 'connecting') { S.mode = 'offline'; update(); }
-    waking = true;
-    setTimeout(connectWS, Math.min(1000 * Math.pow(2, retry++), 6000));
+    if (ev.code === 4001) { S.pwBad = true; if (S.mode !== 'local') { S.mode = 'password'; update(); } return; }
+    if (!gotState || Date.now() - openedAt < 3000) wsFailed('websocket closed (' + ev.code + ')');
+    else goOffline('websocket closed (' + ev.code + ')');
   };
 }
-/* A connection can die without the browser noticing. These watchdogs notice, and reconnect. */
+function wsFailed(why) {
+  closeTransport(); wsFails++;
+  if (wsFails >= 2) { tp = 'sse'; lastIssue = why + '; switched to the plain-HTTP connection'; update(); }
+  goOffline(why);
+}
+function openSSE() {
+  let src;
+  try { src = new EventSource('/events?' + qs()); } catch (e) { goOffline('http stream unavailable'); return; }
+  es = src;
+  src.onopen = () => connected();
+  src.onmessage = ev => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } onServerMessage(m); };
+  src.onerror = () => { if (es === src) { closeTransport(); goOffline('http stream dropped'); } };
+}
+/* watchdogs: a connection can die without the browser noticing */
 function dropSocket() {
   clearTimeout(replyT); clearTimeout(pongT);
-  const old = ws; wsOpen = false;
-  if (old) { old.onclose = null; old.onmessage = null; old.onopen = null; try { old.close(); } catch (e) { } }
+  closeTransport(); wsOpen = false;
   if (S.mode === 'remote') S.mode = 'offline';
   waking = false; if (S.mode !== 'local') update();
   setTimeout(connectWS, 400);
 }
 function checkAlive() {
-  if (!wsOpen || !ws || ws.readyState !== 1) return;
+  if (!wsOpen) return;
+  if (tp === 'sse') { if (Date.now() - lastRx > 45000) dropSocket(); return; }
+  if (!ws || ws.readyState !== 1) return;
   try { ws.send('{"type":"ping"}'); } catch (e) { dropSocket(); return; }
   clearTimeout(pongT); pongT = setTimeout(dropSocket, 6000);
 }
-setInterval(checkAlive, 20000);
+setInterval(checkAlive, 15000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) checkAlive(); });
 window.addEventListener('online', checkAlive);
 
@@ -105,7 +151,15 @@ async function dispatch(action) {
       return true;
     } catch (e) { toast(e.message || 'Something went wrong'); return false; }
   }
-  if (!wsOpen || !ws || ws.readyState !== 1) { toast('Not connected to the table. Reconnecting\u2026'); return false; }
+  if (!wsOpen) { toast('Not connected to the table. Reconnecting\u2026'); return false; }
+  if (tp === 'sse') {
+    try {
+      const r = await fetch('/act?' + qs(), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action }) });
+      if (!r.ok) { let j = {}; try { j = await r.json(); } catch (e) { } toast(j.error || ('The table said no (' + r.status + ').')); return false; }
+      return true;
+    } catch (e) { toast('Could not reach the table. Reconnecting\u2026'); dropSocket(); return false; }
+  }
+  if (!ws || ws.readyState !== 1) { toast('Not connected to the table. Reconnecting\u2026'); return false; }
   try { ws.send(JSON.stringify({ type: 'action', action })); } catch (e) { dropSocket(); toast('Lost the connection. Reconnecting\u2026'); return false; }
   clearTimeout(replyT);
   replyT = setTimeout(() => { toast('The table isn\u2019t answering. Reconnecting, then try again.'); dropSocket(); }, 4500);
@@ -148,6 +202,8 @@ function update() {
   render();
   const my = s ? seatOfId(s, S.actor.id) : -1;
   const myTurn = s && my >= 0 && ((s.phase === 'bidding' && s.turn === my) || (s.phase === 'trump' && s.contract.chooser === my) || (s.phase === 'playing' && !s.pending && s.turn === my));
+  const foot = document.getElementById('foot');
+  if (foot) foot.textContent = 'Build ' + BUILD + '. ' + (S.mode === 'local' ? 'Practice game, nothing is sent to the server.' : (wsOpen ? 'Connected by ' + (tp === 'sse' ? 'plain HTTP' : 'websocket') + '.' : 'Not connected' + (lastIssue ? ': ' + lastIssue + '.' : '.')));
   document.title = (myTurn ? '\u25CF Your turn \u2013 ' : '') + '42 with friends';
   drive();
 }
@@ -364,7 +420,7 @@ $app.addEventListener('click', e => {
   const d = el.dataset, s = cur(), my = s ? seatOfId(s, S.actor.id) : -1;
   switch (d.act) {
     case 'open': dispatch({ type: 'init' }); break;
-    case 'pw': { const v = (document.getElementById('pwin') || {}).value || ''; store.set('g42-pw', v); S.mode = 'connecting'; update(); connectWS(); break; }
+    case 'pw': { const v = (document.getElementById('pwin') || {}).value || ''; store.set('g42-pw', v); S.mode = 'connecting'; update(); wsFails = 0; connectWS(); break; }
     case 'practice': startPractice(); break;
     case 'exit': exitPractice(); break;
     case 'sit': dispatch({ type: 'claim', seat: +d.seat, name: getName() }); break;

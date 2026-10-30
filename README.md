@@ -42,6 +42,16 @@ chooses the rules, and deals. Empty seats get bots.
 * **Privacy:** the address is not listed anywhere, search engines are told to ignore it, and the password
   keeps strangers out. Anyone you give the password to can play.
 
+## If something looks wrong
+* **Which version is running?** Scroll to the bottom of the page: the footer says `Build 1.0.4` and how you're
+  connected. You can also open `your-address/healthz`, which shows the build number. If the build is missing or
+  older, Render is still running old files. Open `server.js` in your GitHub repository and check it mentions
+  `BUILD`; if it doesn't, upload the files again. Then in Render open your service and use
+  **Manual Deploy, then Deploy latest commit**.
+* **Connection.** The page tries a WebSocket first. If that doesn't hold (some networks and proxies block it),
+  it switches to plain HTTP by itself within a few seconds. The footer says which one is in use.
+* **"Waking the table".** The free server was asleep. It connects on its own, usually within a minute.
+
 ## Running it on your own computer
 ```
 npm install

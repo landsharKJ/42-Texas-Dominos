@@ -1,11 +1,18 @@
 {
   "name": "texas-42-table",
-  "version": "1.0.0",
+  "version": "1.0.4",
   "description": "A private browser table for Texas 42 dominoes",
   "main": "server.js",
-  "scripts": { "start": "node server.js", "build": "python3 build.py" },
-  "engines": { "node": ">=18" },
-  "dependencies": { "ws": "^8.18.0" },
+  "scripts": {
+    "start": "node server.js",
+    "build": "python3 build.py"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
   "license": "UNLICENSED",
   "private": true
 }

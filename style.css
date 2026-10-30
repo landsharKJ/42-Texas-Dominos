@@ -195,3 +195,5 @@ dialog ul{padding-left:20px;margin:4px 0}
   .who input{width:104px}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+.foot{max-width:1180px;margin:8px auto 24px;padding:0 18px;color:var(--muted);font-size:12.5px}

@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 const E = require('./engine.js');
 
+const BUILD = require('./package.json').version;
 const PORT = process.env.PORT || 3000;
 const PASSWORD = process.env.TABLE_PASSWORD || '';
 const SCALE = Number(process.env.BOT_DELAY_SCALE) || 1; // tests shrink the bot delays
@@ -33,9 +34,14 @@ function view(s, id) {
   if (v.hostId !== id) v.hostId = 'other';
   return v;
 }
-function send(c) {
-  if (c.ws.readyState === 1) c.ws.send(JSON.stringify({ type: 'state', state: view(state, c.id) }));
+function sendTo(c, obj) {
+  const str = JSON.stringify(obj);
+  try {
+    if (c.ws) { if (c.ws.readyState === 1) c.ws.send(str); }
+    else c.res.write('data: ' + str + '\n\n');
+  } catch (e) { clients.delete(c); }
 }
+const send = c => sendTo(c, { type: 'state', state: view(state, c.id) });
 const broadcast = () => clients.forEach(send);
 
 /* ---------- applying actions ---------- */
@@ -72,10 +78,48 @@ function drive() {
 }
 
 /* ---------- http ---------- */
+const flood = new Map();   // id -> recent action timestamps (shared by websocket and http)
+function tooFast(id) {
+  const now = Date.now(), arr = (flood.get(id) || []).filter(t => now - t < 5000);
+  if (arr.length >= 40) { flood.set(id, arr); return true; }
+  arr.push(now); flood.set(id, arr); return false;
+}
+const validId = id => /^[A-Za-z0-9_-]{8,40}$/.test(id || '');
+function json(res, code, obj) { res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(obj)); }
+
 const server = http.createServer((req, res) => {
-  const url = (req.url || '/').split('?')[0];
-  if (url === '/healthz') { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('ok'); return; }
-  if (url === '/robots.txt') { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('User-agent: *\nDisallow: /\n'); return; }
+  const u = new URL(req.url || '/', 'http://x'), p = u.pathname, q = u.searchParams;
+  if (p === '/healthz') { json(res, 200, { ok: true, build: BUILD, uptimeSeconds: Math.round(process.uptime()), connected: clients.size, phase: state && state.phase }); return; }
+  if (p === '/robots.txt') { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('User-agent: *\nDisallow: /\n'); return; }
+  if (p === '/auth') { passwordOk(q.get('pw') || '') ? json(res, 200, { ok: true, build: BUILD }) : json(res, 401, { ok: false }); return; }
+
+  // plain-HTTP transport: server-sent events down, POST up. Used when websockets are blocked or flaky.
+  if (p === '/events') {
+    if (!passwordOk(q.get('pw') || '')) { json(res, 401, { ok: false }); return; }
+    const id = q.get('id');
+    if (!validId(id)) { json(res, 400, { ok: false }); return; }
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache, no-transform', connection: 'keep-alive', 'x-accel-buffering': 'no' });
+    res.write('retry: 2000\n\n');
+    const c = { res, id };
+    clients.add(c); send(c);
+    req.on('close', () => clients.delete(c));
+    return;
+  }
+  if (p === '/act' && req.method === 'POST') {
+    if (!passwordOk(q.get('pw') || '')) { json(res, 401, { error: 'Wrong password.' }); return; }
+    const id = q.get('id');
+    if (!validId(id)) { json(res, 400, { error: 'Bad id.' }); return; }
+    let body = '';
+    req.on('data', d => { body += d; if (body.length > 4096) req.destroy(); });
+    req.on('end', () => {
+      if (tooFast(id)) { json(res, 429, { error: 'Slow down a little.' }); return; }
+      let m; try { m = JSON.parse(body); } catch (e) { json(res, 400, { error: 'Bad request.' }); return; }
+      if (!m || !m.action || typeof m.action !== 'object') { json(res, 400, { error: 'Bad request.' }); return; }
+      try { apply(m.action, { id }); json(res, 200, { ok: true }); }
+      catch (e) { json(res, 400, { error: e.message }); }
+    });
+    return;
+  }
   res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-robots-tag': 'noindex, nofollow' });
   res.end(INDEX);
 });
@@ -85,29 +129,31 @@ const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 4096 });
 wss.on('connection', (ws, req) => {
   const q = new URL(req.url, 'http://x').searchParams;
   const id = q.get('id') || '';
+  if (process.env.DEBUG_NO_WS) { ws.close(1008, 'websockets disabled for testing'); return; }
   if (!passwordOk(q.get('pw') || '')) { ws.close(4001, 'password'); return; }
-  if (!/^[A-Za-z0-9_-]{8,40}$/.test(id)) { ws.close(4002, 'bad id'); return; }
-  const c = { ws, id, alive: true, stamps: [] };
+  if (!validId(id)) { ws.close(4002, 'bad id'); return; }
+  const c = { ws, id, alive: true };
   clients.add(c);
   ws.on('pong', () => { c.alive = true; });
   send(c);
   ws.on('message', data => {
-    const now = Date.now();
-    c.stamps = c.stamps.filter(t => now - t < 5000);
-    if (c.stamps.length >= 40) { ws.send(JSON.stringify({ type: 'error', message: 'Slow down a little.' })); return; } // flood guard; dropped messages don't count
-    c.stamps.push(now);
     let m; try { m = JSON.parse(data); } catch (e) { return; }
     if (m && m.type === 'ping') { ws.send('{"type":"pong"}'); return; }
     if (!m || m.type !== 'action' || !m.action || typeof m.action !== 'object') return;
+    if (tooFast(id)) { ws.send(JSON.stringify({ type: 'error', message: 'Slow down a little.' })); return; }
     try { apply(m.action, { id }); ws.send('{"type":"ack"}'); }
     catch (e) { ws.send(JSON.stringify({ type: 'error', message: e.message })); send(c); }
   });
   ws.on('close', () => clients.delete(c));
   ws.on('error', () => clients.delete(c));
 });
-// drop dead connections; the pings also keep the hosting platform from treating the table as idle mid-game
+// keep connections honest: drop dead websockets, and send a heartbeat to http-stream clients
+// (the traffic also stops the hosting platform treating the table as idle mid-game)
 setInterval(() => {
-  clients.forEach(c => { if (!c.alive) { c.ws.terminate(); clients.delete(c); return; } c.alive = false; try { c.ws.ping(); } catch (e) { } });
-}, 25000);
+  clients.forEach(c => {
+    if (c.ws) { if (!c.alive) { c.ws.terminate(); clients.delete(c); return; } c.alive = false; try { c.ws.ping(); } catch (e) { } }
+    else sendTo(c, { type: 'hb' });
+  });
+}, 15000);
 
-server.listen(PORT, () => console.log('42 table listening on ' + PORT + (PASSWORD ? ' (password protected)' : ' (no password set)')));
+server.listen(PORT, () => console.log('42 table build ' + BUILD + ' listening on ' + PORT + (PASSWORD ? ' (password protected)' : ' (no password set)')));
