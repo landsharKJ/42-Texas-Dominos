@@ -273,7 +273,7 @@ function lobbyHTML(s) {
     '<div class="opt"><span>Marks to win<small>A made bid scores marks for your team.</small></span><span class="seg">' + seg + '</span></div>' +
     sw('forceDealer', 'Dealer must bid', 'If everyone passes, the dealer bids at least 30. Off means a redeal.') +
     sw('followMe', 'Follow me', 'Call no trump: highest end leads, doubles are high in their suit.') +
-    sw('nello', 'Nello', 'Bid 1 or 2 marks and lose every trick. Your partner sits out; doubles are their own suit.') +
+    sw('nello', 'Nello', 'Bid 1 or 2 marks and lose every trick. Your partner sits out. You choose how doubles count: own suit, high or low.') +
     sw('sevens', 'Sevens', 'Bid 1 or 2 marks and win every trick. Closest total to 7 wins; no following suit.') +
     sw('splash', 'Splash', 'Hold 3+ doubles: bid 2 or 3 marks. Partner calls trump and leads. Take every trick.') +
     sw('plunge', 'Plunge', 'Hold 4+ doubles: bid 4 or 5 marks. Partner calls trump and leads. Take every trick.') +
@@ -309,7 +309,7 @@ function centerHTML(s, base) {
   let mid = '';
   const c = s.contract;
   if (s.phase === 'bidding') mid = s.high ? '<b>' + esc(bidLabel(s.high.bid)) + '</b>High bid by ' + esc(seatName(s, s.high.seat)) : 'No bid yet';
-  else if (s.phase === 'trump') mid = '<b>' + esc(bidLabel(c.bid)) + '</b>' + esc(seatName(s, c.chooser)) + ' is calling trump';
+  else if (s.phase === 'trump') mid = '<b>' + esc(bidLabel(c.bid)) + '</b>' + esc(seatName(s, c.chooser)) + (c.bid.kind === 'nello' ? ' is choosing how doubles count' : ' is calling trump');
   else if (s.phase === 'handover' || s.phase === 'gameover') mid = '<b>Hand over</b>' + (s.result.made ? 'Bid made' : 'Bid set');
   else if (c) mid = '<b>' + esc(trumpName(c.trump).replace(/ \(.*\)/, '')) + '</b>' + (s.pending ? esc(seatName(s, s.trickWinner)) + ' takes it' : 'Trick ' + Math.min(s.trickNo, 7) + ' of 7');
   return '<div class="center">' + slots + '<div class="mid">' + mid + '</div></div>';
@@ -350,8 +350,14 @@ function panelHTML(s, my) {
       (forced ? '' : '<button class="chip pass" data-act="bid" data-kind="pass">Pass</button>') + '</div>';
   }
   if (s.phase === 'trump') {
-    if (c.chooser !== my) return wait(esc(seatName(s, c.chooser)) + ' is calling trump\u2026');
+    if (c.chooser !== my) return wait(esc(seatName(s, c.chooser)) + (c.bid.kind === 'nello' ? ' is choosing how doubles count\u2026' : ' is calling trump\u2026'));
     const hand = s.hands[my];
+    if (c.bid.kind === 'nello') {
+      const nd = (dbl, name, hint) => '<button class="chip trumpchip" data-act="trump" data-mode="nello" data-dbl="' + dbl + '">' + name + '<small>' + hint + '</small></button>';
+      return '<div class="panel card"><p class="lead">How do doubles count?</p><p>You bid ' + esc(bidLabel(c.bid)) + ' and must lose every trick. Your partner sits out. Choose before you lead.</p><div class="bidrow">' +
+        nd('suit', 'Own suit', 'a seventh suit, 6-6 down to 0-0') + nd('high', 'Doubles high', 'top of their own number') + nd('low', 'Doubles low', 'bottom of their own number') +
+        '</div><p style="margin:0">You hold ' + hand.filter(isDbl).length + ' doubles.</p></div>';
+    }
     const chips = SUIT_NAMES.map((nm, n) => {
       const k = hand.filter(t => lo(t) === n || hi(t) === n).length;
       return '<button class="chip trumpchip" data-act="trump" data-mode="suit" data-n="' + n + '">' + nm[0].toUpperCase() + nm.slice(1) + '<small>' + k + ' in hand</small></button>';
@@ -433,7 +439,7 @@ $app.addEventListener('click', e => {
     case 'bid':
       dispatch({ type: 'bid', seat: my, bid: d.kind === 'pass' ? null : (d.kind === 'pts' ? { kind: 'pts', pts: +d.pts } : { kind: d.kind, marks: +d.marks }) }); break;
     case 'trump':
-      dispatch({ type: 'trump', seat: my, trump: d.mode === 'suit' ? { mode: 'suit', n: +d.n } : { mode: d.mode } }); break;
+      dispatch({ type: 'trump', seat: my, trump: d.mode === 'suit' ? { mode: 'suit', n: +d.n } : d.mode === 'nello' ? { mode: 'nello', dbl: d.dbl } : { mode: d.mode } }); break;
     case 'play': dispatch({ type: 'play', seat: my, tile: d.tile }); break;
     case 'collect': dispatch({ type: 'collect' }); break;
     case 'next': dispatch({ type: 'nextHand' }); break;

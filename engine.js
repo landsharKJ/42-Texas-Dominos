@@ -17,7 +17,7 @@ function suitOf(t, tr) {
   switch (tr.mode) {
     case 'suit': return (a === tr.n || b === tr.n) ? TR : b;
     case 'doubles': return a === b ? TR : b;
-    case 'nello': return a === b ? 7 : b;
+    case 'nello': return (a === b && (tr.dbl || 'suit') === 'suit') ? 7 : b;   // 'high'/'low': doubles stay in their own number
     case 'sevens': return 0;
     default: return b; // 'none' (follow me): doubles are high in their own number
   }
@@ -25,7 +25,8 @@ function suitOf(t, tr) {
 function rankOf(t, tr) {
   const a = lo(t), b = hi(t);
   if (tr.mode === 'suit' && (a === tr.n || b === tr.n)) return a === b ? 100 : (a === tr.n ? b : a);
-  if ((tr.mode === 'doubles' || tr.mode === 'nello') && a === b) return a;
+  if (tr.mode === 'doubles' && a === b) return a;
+  if (tr.mode === 'nello' && a === b) { const d = tr.dbl || 'suit'; return d === 'low' ? -1 : d === 'high' ? 10 : a; }
   return a === b ? 10 : a;
 }
 const powerOf = (t, tr) => (suitOf(t, tr) === TR ? 100 : 0) + rankOf(t, tr);
@@ -87,7 +88,7 @@ function trumpLabel(tr) {
     case 'suit': return SUIT_NAMES[tr.n];
     case 'doubles': return 'doubles';
     case 'none': return 'follow me (no trump)';
-    case 'nello': return 'nello (doubles are their own suit)';
+    case 'nello': return 'nello (' + ({ suit: 'doubles are their own suit', high: 'doubles high', low: 'doubles low' }[tr.dbl || 'suit']) + ')';
     case 'sevens': return 'sevens';
   }
 }
@@ -134,7 +135,7 @@ function finishBidding(s) {
   const d = s.high.seat, b = s.high.bid;
   s.contract = { seat: d, bid: b, trump: null, chooser: d, sitOut: null };
   say(s, seatName(s, d) + ' wins the bid at ' + bidLabel(b) + '.');
-  if (b.kind === 'nello') { s.contract.trump = { mode: 'nello' }; s.contract.sitOut = (d + 2) % 4; startPlay(s, d); return; }
+  if (b.kind === 'nello') s.contract.sitOut = (d + 2) % 4;   // trump phase below: the bidder chooses how doubles count
   if (b.kind === 'sevens') { s.contract.trump = { mode: 'sevens' }; startPlay(s, d); return; }
   if (b.kind === 'splash' || b.kind === 'plunge') s.contract.chooser = (d + 2) % 4;
   s.phase = 'trump'; s.turn = s.contract.chooser;
@@ -251,6 +252,13 @@ function reduce(state, action, actor) {
       need(action.seat === s.contract.chooser, 'Not your choice');
       need(canAct(s, action.seat, actor), 'Not your seat');
       const t = action.trump;
+      if (s.contract.bid.kind === 'nello') {
+        need(t && t.mode === 'nello' && ['suit', 'high', 'low'].includes(t.dbl), 'Choose how doubles count');
+        s.contract.trump = { mode: 'nello', dbl: t.dbl };
+        say(s, seatName(s, action.seat) + ' calls ' + trumpLabel(s.contract.trump) + '.');
+        startPlay(s, action.seat);
+        break;
+      }
       const ok = t && ((t.mode === 'suit' && Number.isInteger(t.n) && t.n >= 0 && t.n <= 6) || t.mode === 'doubles' || (t.mode === 'none' && s.opts.followMe));
       need(ok, 'Invalid trump');
       s.contract.trump = t.mode === 'suit' ? { mode: 'suit', n: t.n } : { mode: t.mode };
@@ -417,25 +425,31 @@ function evalRegular(hand, seat, opts, N) {
     T, arr: worlds.map(w => { const r = simulate(w, T, seat, null, seat, 'reg'); return { p: r.pts[seat % 2], all: r.tricks[seat % 2] === 7 }; })
   }));
 }
+// Bots want to clear bigger bids by a point or two: real defenders play better than the simulated ones.
+const marginFor = pts => pts >= 36 ? 2 : pts >= 32 ? 1 : 0;
 function pRegular(res, bid) {
   let bp = 0, bT = null, bm = 0;
   for (const { T, arr } of res) {
     let ok = 0, sum = 0;
-    for (const x of arr) { if (bid.kind === 'pts' ? x.p >= bid.pts : x.all) ok++; sum += x.p; }
+    for (const x of arr) { if (bid.kind === 'pts' ? x.p >= Math.min(42, bid.pts + marginFor(bid.pts)) : x.all) ok++; sum += x.p; }
     const p = ok / arr.length, m = sum / arr.length;
     if (p > bp || (p === bp && m > bm)) { bp = p; bT = T; bm = m; }
   }
   return { p: bp, T: bT };
 }
+const NELLO_MODES = ['suit', 'high', 'low'];
 function pSpecial(kind, hand, seat, opts, N) {
-  let ok = 0;
+  let ok = 0; const nok = { suit: 0, high: 0, low: 0 };
   for (let i = 0; i < N; i++) {
     const w = sampleHands(hand, seat), partner = (seat + 2) % 4;
     let r;
-    if (kind === 'nello') { r = simulate(w, { mode: 'nello' }, seat, partner, seat, 'nello'); if (r.tricks[seat % 2] === 0) ok++; }
+    if (kind === 'nello') {
+      for (const dbl of NELLO_MODES) { r = simulate(w, { mode: 'nello', dbl }, seat, partner, seat, 'nello'); if (r.tricks[seat % 2] === 0) nok[dbl]++; }
+    }
     else if (kind === 'sevens') { r = simulate(w, { mode: 'sevens' }, seat, null, seat, 'sevens'); if (r.tricks[seat % 2] === 7) ok++; }
     else { r = simulate(w, partnerTrump(w[partner], opts), partner, null, seat, 'reg'); if (r.tricks[seat % 2] === 7) ok++; }
   }
+  if (kind === 'nello') return Math.max(nok.suit, nok.high, nok.low) / N;
   return ok / N;
 }
 function botBid(s, seat) {
@@ -446,7 +460,10 @@ function botBid(s, seat) {
   const reg = evalRegular(hand, seat, s.opts, 60);
   const cache = {};
   const spec = k => cache[k] !== undefined ? cache[k] : (cache[k] = pSpecial(k, hand, seat, s.opts, 60));
-  const thr = b => ({ pts: 0.6, marks: 0.82, nello: 0.9, sevens: 0.85, splash: 0.82, plunge: 0.82 }[b.kind]) + (partnerHigh ? 0.1 : 0);
+  // How sure a bot must be before bidding: easy to open at 30, steadily stricter as the bid climbs,
+  // and much stricter above 36 (those bids need nearly a perfect hand). Marks and specials are all-or-nothing, so stricter still.
+  const thr = b => (b.kind === 'pts' ? 0.6 + (b.pts - 30) * 0.025 + (b.pts > 36 ? 0.1 : 0)
+    : { marks: 0.85, nello: 0.9, sevens: 0.88, splash: 0.85, plunge: 0.85 }[b.kind]) + (partnerHigh ? 0.15 : 0);
   let pick = null;
   for (const b of avail.slice().sort((x, y) => bidValue(y) - bidValue(x))) {
     const p = (b.kind === 'pts' || b.kind === 'marks') ? pRegular(reg, b).p : spec(b.kind);
@@ -457,6 +474,15 @@ function botBid(s, seat) {
 }
 function botTrump(s, seat) {
   const b = s.contract.bid;
+  if (b.kind === 'nello') {
+    const hand = s.hands[seat], partner = (seat + 2) % 4, sc = { suit: 0, high: 0, low: 0 };
+    for (let i = 0; i < 60; i++) {
+      const w = sampleHands(hand, seat);
+      for (const dbl of NELLO_MODES) if (simulate(w, { mode: 'nello', dbl }, seat, partner, seat, 'nello').tricks[seat % 2] === 0) sc[dbl]++;
+    }
+    const dbl = NELLO_MODES.reduce((x, y) => sc[y] > sc[x] ? y : x, 'suit');
+    return { mode: 'nello', dbl };
+  }
   if (b.kind === 'splash' || b.kind === 'plunge') return partnerTrump(s.hands[seat], s.opts);
   return pRegular(evalRegular(s.hands[seat], seat, s.opts, 60), b).T;
 }
@@ -475,4 +501,4 @@ function pendingBotAction(s) {
   return null;
 }
 
-if (typeof module !== 'undefined') module.exports = { seatOfId, ALL, TR, SUIT_NAMES, lo, hi, isDbl, pipsOf, countOf, suitOf, rankOf, trickWinner, legalTiles, availableBids, bidValue, bidLabel, reduce, newTable, pendingBotAction, simulate, sampleHands, team, outcome, DEFAULT_OPTS };
+if (typeof module !== 'undefined') module.exports = { botBid, botTrump, seatOfId, ALL, TR, SUIT_NAMES, lo, hi, isDbl, pipsOf, countOf, suitOf, rankOf, trickWinner, legalTiles, availableBids, bidValue, bidLabel, reduce, newTable, pendingBotAction, simulate, sampleHands, team, outcome, DEFAULT_OPTS };
