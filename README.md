@@ -28,8 +28,8 @@ keeps the table so friends can join from a link on any phone or computer.
 start command `node server.js`, instance type **Free**, and add an environment variable `TABLE_PASSWORD`.)
 
 ### 3. Play
-Send your friends the address and the password. The first person to arrive presses **Open the table**
-and becomes the host. Everyone takes a seat, the host deals, and empty seats get bots.
+Send your friends the address and the password. Everyone takes a seat. The first person to sit down becomes the host,
+chooses the rules, and deals. Empty seats get bots.
 
 ## Good to know
 * **Waking up.** Render's free plan puts the server to sleep after 15 minutes without traffic. The next

@@ -16,7 +16,7 @@ const INDEX_PATH = [path.join(__dirname, 'index.html'), path.join(__dirname, 'pu
 if (!INDEX_PATH) { console.error('index.html is missing from the repository. Upload it next to server.js.'); process.exit(1); }
 const INDEX = fs.readFileSync(INDEX_PATH);
 
-let state = null;           // the one table; lives in memory
+let state = E.reduce(null, { type: 'init' }, { id: null });   // the one table; lives in memory, created at startup (nobody is host until someone sits)
 const clients = new Set();  // { ws, id, alive }
 
 const sha = s => crypto.createHash('sha256').update(String(s)).digest();
@@ -97,8 +97,9 @@ wss.on('connection', (ws, req) => {
     if (c.stamps.length >= 40) { ws.send(JSON.stringify({ type: 'error', message: 'Slow down a little.' })); return; } // flood guard; dropped messages don't count
     c.stamps.push(now);
     let m; try { m = JSON.parse(data); } catch (e) { return; }
+    if (m && m.type === 'ping') { ws.send('{"type":"pong"}'); return; }
     if (!m || m.type !== 'action' || !m.action || typeof m.action !== 'object') return;
-    try { apply(m.action, { id }); }
+    try { apply(m.action, { id }); ws.send('{"type":"ack"}'); }
     catch (e) { ws.send(JSON.stringify({ type: 'error', message: e.message })); send(c); }
   });
   ws.on('close', () => clients.delete(c));

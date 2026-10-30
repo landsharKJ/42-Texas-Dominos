@@ -745,7 +745,7 @@ const store = (() => {
 })();
 
 const S = { mode: 'connecting', local: null, remote: null, actor: { id: null }, realId: null, pwBad: false };
-let ws = null, wsOpen = false, retry = 0, waking = false;
+let ws = null, wsOpen = false, retry = 0, waking = false, replyT = null, pongT = null;
 const cur = () => (S.mode === 'local' ? S.local : S.remote);
 const esc = x => String(x == null ? '' : x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -798,6 +798,7 @@ function connectWS() {
   };
   sock.onmessage = ev => {
     let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+    clearTimeout(replyT); clearTimeout(pongT);
     if (m.type === 'state') { S.remote = m.state; if (S.mode !== 'local') update(); }
     else if (m.type === 'error') toast(m.message);
   };
@@ -809,6 +810,24 @@ function connectWS() {
     setTimeout(connectWS, Math.min(1000 * Math.pow(2, retry++), 6000));
   };
 }
+/* A connection can die without the browser noticing. These watchdogs notice, and reconnect. */
+function dropSocket() {
+  clearTimeout(replyT); clearTimeout(pongT);
+  const old = ws; wsOpen = false;
+  if (old) { old.onclose = null; old.onmessage = null; old.onopen = null; try { old.close(); } catch (e) { } }
+  if (S.mode === 'remote') S.mode = 'offline';
+  waking = false; if (S.mode !== 'local') update();
+  setTimeout(connectWS, 400);
+}
+function checkAlive() {
+  if (!wsOpen || !ws || ws.readyState !== 1) return;
+  try { ws.send('{"type":"ping"}'); } catch (e) { dropSocket(); return; }
+  clearTimeout(pongT); pongT = setTimeout(dropSocket, 6000);
+}
+setInterval(checkAlive, 20000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkAlive(); });
+window.addEventListener('online', checkAlive);
+
 async function dispatch(action) {
   if (S.mode === 'local') {
     try {
@@ -817,8 +836,10 @@ async function dispatch(action) {
       return true;
     } catch (e) { toast(e.message || 'Something went wrong'); return false; }
   }
-  if (!wsOpen) { toast('Not connected to the table yet.'); return false; }
-  ws.send(JSON.stringify({ type: 'action', action }));
+  if (!wsOpen || !ws || ws.readyState !== 1) { toast('Not connected to the table. Reconnecting\u2026'); return false; }
+  try { ws.send(JSON.stringify({ type: 'action', action })); } catch (e) { dropSocket(); toast('Lost the connection. Reconnecting\u2026'); return false; }
+  clearTimeout(replyT);
+  replyT = setTimeout(() => { toast('The table isn\u2019t answering. Reconnecting, then try again.'); dropSocket(); }, 4500);
   return true;
 }
 
@@ -889,7 +910,7 @@ function render() {
 }
 function setStatus(s) {
   const bits = [];
-  bits.push(S.mode === 'local' ? 'Practice game' : 'Shared table');
+  bits.push(S.mode === 'local' ? 'Practice game' : (wsOpen ? 'Shared table, connected' : 'Shared table'));
   if (s.phase !== 'lobby') bits.push('hand ' + s.handNo);
   const my = seatOfId(s, S.actor.id);
   if (s.hostId !== S.actor.id && my >= 0 && hostSeatIdx(s) >= 0) bits.push('host: ' + s.seats[hostSeatIdx(s)].name);
