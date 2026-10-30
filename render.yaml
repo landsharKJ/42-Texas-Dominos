@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: texas-42
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    envVars:
+      - key: TABLE_PASSWORD
+        sync: false   # you type this in the Render dashboard when you create the service

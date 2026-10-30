@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>42 with friends</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E%F0%9F%A4%A0%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/*CSS*/
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="brand-num">42</span><span class="brand-sub">Texas dominoes</span></div>
+  <div class="status" id="status" aria-live="polite"></div>
+  <label class="who">Your name <input id="nick" maxlength="14" placeholder="Player" autocomplete="off"></label>
+  <button class="linkbtn" id="rulesBtn" type="button">Rules</button>
+</header>
+<main id="app"></main>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<dialog id="rules"><div class="in">
+  <h2>How this table plays</h2>
+  <p>Four players, two partnerships. Partners sit across from each other. First team to the marks target wins.</p>
+  <h3>Counting</h3>
+  <p>Each hand is worth 42 points: 1 per trick, plus the count dominoes. 5-5 and 6-4 are worth 10 each. 5-0, 4-1 and 3-2 are worth 5 each.</p>
+  <h3>Bidding</h3>
+  <p>Starting left of the dealer, everyone gets one turn to bid or pass. Bids run from 30 to 41 points, then 42 (1 mark) and 84 (2 marks). A mark bid means your team must win every trick. Make your bid and your team scores 1 mark (or the marks bid). Get set and the other team scores them. The hand stops as soon as the result is decided.</p>
+  <h3>Suits and trump</h3>
+  <ul>
+    <li>A domino belongs to the suit of its higher end. Doubles are the highest of their suit.</li>
+    <li>A domino holding the trump number is a trump, and belongs to no other suit. 
+    The double of the trump number is the top trump.</li>
+    <li>Follow the suit that was led if you can. Trump wins; otherwise the highest of the led suit wins.</li>
+    <li><b>Doubles</b> as trump: all seven doubles form the trump suit, 6-6 highest.</li>
+    <li><b>Follow me</b>: no trump. The higher end of the led domino sets the suit.</li>
+  </ul>
+  <h3>Specials</h3>
+  <ul>
+    <li><b>Nello</b>: bid 1 or 2 marks, and lose every trick. Your partner sits out, so each trick has three dominoes. Doubles are their own suit.</li>
+    <li><b>Sevens</b>: bid 1 or 2 marks, and win every trick. No following suit; the domino whose total is closest to 7 wins, and ties go to the first one played.</li>
+    <li><b>Splash</b>: with 3 or more doubles, bid 2 or 3 marks. Your partner calls trump and leads. Win every trick.</li>
+    <li><b>Plunge</b>: with 4 or more doubles, bid 4 or 5 marks. Your partner calls trump and leads. Win every trick.</li>
+  </ul>
+  <p>The dealer is forced to bid 30 if everyone else passes, unless the host turns that off. A bid has to beat the current high bid, so a 1-mark Nello can’t outbid a 1-mark Sevens.</p>
+  <div class="row" style="margin-top:14px"><button class="btn primary" id="rulesClose" type="button">Back to the table</button></div>
+</div></dialog>
+
+<script>
+/*ENGINE*/
+</script>
+<script>
+/*APP*/
+</script>
+</body>
+</html>

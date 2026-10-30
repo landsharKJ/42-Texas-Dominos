@@ -1,0 +1,49 @@
+# Texas 42 table
+
+A private browser table for 42 dominoes. Four seats, bots fill empty ones, and the server
+keeps the table so friends can join from a link on any phone or computer.
+
+* The server runs the bots and sends each player **only their own dominoes**.
+* Set a **table password** so only people you give it to can join.
+* House rules (Nello, Sevens, Splash, Plunge, Follow me, marks to win) are toggled by the host in the lobby.
+
+## Put it online with Render (free)
+
+### 1. Put these files on GitHub
+1. Make a free account at github.com and create a **new repository** (private is fine).
+2. Click **Add file, then Upload files**, and drag in everything from this folder
+   (`server.js`, `engine.js`, `package.json`, `package-lock.json`, `render.yaml`, the `public` folder, and the rest).
+3. Click **Commit changes**.
+
+### 2. Create the service on Render
+1. Make a free account at render.com and sign in with GitHub.
+2. Click **New, then Blueprint**, pick your repository, and continue.
+3. Render asks for **TABLE_PASSWORD**. Type the password your friends will use.
+4. Click **Deploy Blueprint** and wait a few minutes until the service says **Live**.
+5. Open the service and copy its address. It looks like `https://texas-42.onrender.com`.
+
+(Prefer clicking through it yourself? Choose **New, then Web Service** instead. Build command `npm install`,
+start command `node server.js`, instance type **Free**, and add an environment variable `TABLE_PASSWORD`.)
+
+### 3. Play
+Send your friends the address and the password. The first person to arrive presses **Open the table**
+and becomes the host. Everyone takes a seat, the host deals, and empty seats get bots.
+
+## Good to know
+* **Waking up.** Render's free plan puts the server to sleep after 15 minutes without traffic. The next
+  visitor waits up to about a minute while it wakes. Have one person open the link a minute before game night.
+* **Restarts lose the game.** The table lives in memory. If Render restarts the service, the current game
+  is gone and the table starts empty. Finished hands and scores are not saved anywhere.
+* **Changing the password:** Render dashboard, your service, **Environment**, edit `TABLE_PASSWORD`, save.
+  Everyone will be asked for the new password.
+* **Updating the game:** change files in the GitHub repository and Render redeploys automatically.
+* **Privacy:** the address is not listed anywhere, search engines are told to ignore it, and the password
+  keeps strangers out. Anyone you give the password to can play.
+
+## Running it on your own computer
+```
+npm install
+TABLE_PASSWORD=secret npm start      # then open http://localhost:3000
+```
+`npm run build` rebuilds `public/index.html` from `template.html`, `style.css`, `engine.js` and `app.js`
+(needs Python 3). The prebuilt `public/index.html` is included, so you only need this if you edit those files.
