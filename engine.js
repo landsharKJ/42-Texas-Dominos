@@ -11,26 +11,35 @@ const team = seat => seat % 2;
 const sortHand = h => h.sort((x, y) => (hi(y) * 10 + lo(y)) - (hi(x) * 10 + lo(x)));
 function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
-/* ---- suits, ranks, tricks ---- */
-function suitOf(t, tr) {
-  const a = lo(t), b = hi(t);
-  switch (tr.mode) {
-    case 'suit': return (a === tr.n || b === tr.n) ? TR : b;
-    case 'doubles': return a === b ? TR : b;
-    case 'nello': return (a === b && (tr.dbl || 'suit') === 'suit') ? 7 : b;   // 'high'/'low': doubles stay in their own number
-    case 'sevens': return 0;
-    default: return b; // 'none' (follow me): doubles are high in their own number
-  }
+/* ---- suits, ranks, tricks ----
+   A domino that is not trump belongs to BOTH of its numbers. The domino led sets the suit by its higher end
+   (a double sets its own number), and anyone holding a non-trump domino with that number on either end can follow.
+   Inside a suit, the double is highest, then dominoes rank by their OTHER end: with threes led, 3-3 beats 3-6
+   beats 3-5 ... beats 3-2. A domino carrying the trump number is trump and follows nothing but trump. */
+const isTrumpTile = (t, tr) => tr.mode === 'suit' ? (lo(t) === tr.n || hi(t) === tr.n) : tr.mode === 'doubles' ? lo(t) === hi(t) : false;
+const nelloDoublesOwnSuit = tr => tr.mode === 'nello' && (tr.dbl || 'suit') === 'suit';
+function ledSuit(t, tr) {            // the suit a domino sets when it is led
+  if (isTrumpTile(t, tr)) return TR;
+  if (nelloDoublesOwnSuit(tr) && lo(t) === hi(t)) return 7;
+  return hi(t);
 }
-function rankOf(t, tr) {
-  const a = lo(t), b = hi(t);
-  if (tr.mode === 'suit' && (a === tr.n || b === tr.n)) return a === b ? 100 : (a === tr.n ? b : a);
-  if (tr.mode === 'doubles' && a === b) return a;
-  if (tr.mode === 'nello' && a === b) { const d = tr.dbl || 'suit'; return d === 'low' ? -1 : d === 'high' ? 10 : a; }
-  return a === b ? 10 : a;
+function follows(t, s, tr) {         // can this domino be played to follow suit s?
+  if (s === TR) return isTrumpTile(t, tr);
+  if (isTrumpTile(t, tr)) return false;
+  if (s === 7) return lo(t) === hi(t);                       // nello: the doubles suit
+  if (nelloDoublesOwnSuit(tr) && lo(t) === hi(t)) return false;
+  return lo(t) === s || hi(t) === s;
 }
-const powerOf = (t, tr) => (suitOf(t, tr) === TR ? 100 : 0) + rankOf(t, tr);
+function rankIn(t, s, tr) {          // strength of a domino inside suit s
+  const a = lo(t), b = hi(t);
+  if (s === TR) return tr.mode === 'suit' ? (a === b ? 100 : (a === tr.n ? b : a)) : a;
+  if (s === 7) return a;
+  if (a === b) return (tr.mode === 'nello' && tr.dbl === 'low') ? -1 : 10;
+  return a === s ? b : a;
+}
 const sevenDist = t => Math.abs(pipsOf(t) - 7);
+// rough overall strength, used only to order choices ("play the cheapest winner")
+const powerOf = (t, tr) => isTrumpTile(t, tr) ? 100 + rankIn(t, TR, tr) : (lo(t) === hi(t) ? 20 : 0) + pipsOf(t);
 
 function trickWinner(plays, tr) {
   if (tr.mode === 'sevens') {
@@ -38,21 +47,21 @@ function trickWinner(plays, tr) {
     for (const p of plays) if (sevenDist(p.tile) < sevenDist(best.tile)) best = p;
     return best.seat;
   }
-  const led = suitOf(plays[0].tile, tr);
-  const want = plays.some(p => suitOf(p.tile, tr) === TR) ? TR : led;
+  const led = ledSuit(plays[0].tile, tr);
+  const trumps = plays.filter(p => isTrumpTile(p.tile, tr));
+  const pool = trumps.length ? trumps : plays.filter(p => follows(p.tile, led, tr));
+  const suit = trumps.length ? TR : led;
   let best = null;
-  for (const p of plays) {
-    if (suitOf(p.tile, tr) !== want) continue;
-    if (!best || rankOf(p.tile, tr) > rankOf(best.tile, tr)) best = p;
-  }
+  for (const p of pool) if (!best || rankIn(p.tile, suit, tr) > rankIn(best.tile, suit, tr)) best = p;
   return best.seat;
 }
 function legalTiles(hand, trick, tr) {
   if (tr.mode === 'sevens' || !trick.length) return hand.slice();
-  const led = suitOf(trick[0].tile, tr);
-  const f = hand.filter(t => suitOf(t, tr) === led);
+  const led = ledSuit(trick[0].tile, tr);
+  const f = hand.filter(t => follows(t, led, tr));
   return f.length ? f : hand.slice();
 }
+const suitOf = ledSuit;
 
 /* ---- bids ---- */
 const bidValue = b => b.kind === 'pts' ? b.pts : b.marks * 42;
@@ -316,10 +325,12 @@ function reduce(state, action, actor) {
 
 /* ===================== BOTS ===================== */
 const best = (list, f) => { let b = null, bs = -Infinity; for (const x of list) { const v = f(x); if (v > bs) { bs = v; b = x; } } return b; };
-function beatsWhenLed(u, t, tr) {
-  const su = suitOf(u, tr), st = suitOf(t, tr);
-  if (su === st) return rankOf(u, tr) > rankOf(t, tr);
-  return su === TR;
+function beatsWhenLed(u, t, tr) {   // if t is led, could u (played later) take the trick from it?
+  const tu = isTrumpTile(u, tr), tt = isTrumpTile(t, tr);
+  if (tu !== tt) return tu;
+  const led = ledSuit(t, tr);
+  if (tt) return rankIn(u, TR, tr) > rankIn(t, TR, tr);
+  return follows(u, led, tr) && rankIn(u, led, tr) > rankIn(t, led, tr);
 }
 const isBossLead = (t, unseen, tr) => !unseen.some(u => beatsWhenLed(u, t, tr));
 function currentWinner(trick, tr) { const w = trickWinner(trick, tr); return trick.find(p => p.seat === w); }
@@ -351,15 +362,15 @@ function pickTile(c) {
   const dump = t => -(countOf(t) * 100 + powerOf(t, tr));
   if (!trick.length) {
     if ((tr.mode === 'suit' || tr.mode === 'doubles') && attacking) {
-      const trumps = hand.filter(t => suitOf(t, tr) === TR);
+      const trumps = hand.filter(t => isTrumpTile(t, tr));
       if (trumps.length) {
-        const top = best(trumps, t => rankOf(t, tr));
-        const unseenTr = unseen.filter(t => suitOf(t, tr) === TR).length;
+        const top = best(trumps, t => rankIn(t, TR, tr));
+        const unseenTr = unseen.filter(t => isTrumpTile(t, tr)).length;
         if (unseenTr > 0 && (trumps.length >= 2 || isBossLead(top, unseen, tr))) return top;
       }
     }
-    const bosses = legal.filter(t => suitOf(t, tr) !== TR && isBossLead(t, unseen, tr));
-    if (bosses.length) return best(bosses, t => countOf(t) * 10 + rankOf(t, tr));
+    const bosses = legal.filter(t => !isTrumpTile(t, tr) && isBossLead(t, unseen, tr));
+    if (bosses.length) return best(bosses, t => countOf(t) * 10 + powerOf(t, tr) / 10);
     const tb = legal.filter(t => isBossLead(t, unseen, tr));
     if (tb.length && attacking) return best(tb, t => countOf(t));
     return best(legal, dump);
@@ -501,4 +512,4 @@ function pendingBotAction(s) {
   return null;
 }
 
-if (typeof module !== 'undefined') module.exports = { botBid, botTrump, seatOfId, ALL, TR, SUIT_NAMES, lo, hi, isDbl, pipsOf, countOf, suitOf, rankOf, trickWinner, legalTiles, availableBids, bidValue, bidLabel, reduce, newTable, pendingBotAction, simulate, sampleHands, team, outcome, DEFAULT_OPTS };
+if (typeof module !== 'undefined') module.exports = { ledSuit, follows, rankIn, isTrumpTile, botBid, botTrump, seatOfId, ALL, TR, SUIT_NAMES, lo, hi, isDbl, pipsOf, countOf, suitOf, trickWinner, legalTiles, availableBids, bidValue, bidLabel, reduce, newTable, pendingBotAction, simulate, sampleHands, team, outcome, DEFAULT_OPTS };

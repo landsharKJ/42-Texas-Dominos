@@ -43,7 +43,7 @@ chooses the rules, and deals. Empty seats get bots.
   keeps strangers out. Anyone you give the password to can play.
 
 ## If something looks wrong
-* **Which version is running?** Scroll to the bottom of the page: the footer says `Build 1.0.5` and how you're
+* **Which version is running?** Scroll to the bottom of the page: the footer says `Build 1.0.6` and how you're
   connected. You can also open `your-address/healthz`, which shows the build number. If the build is missing or
   older, Render is still running old files. Open `server.js` in your GitHub repository and check it mentions
   `BUILD`; if it doesn't, upload the files again. Then in Render open your service and use

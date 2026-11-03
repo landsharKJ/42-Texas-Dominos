@@ -374,7 +374,7 @@ function panelHTML(s, my) {
     const hand = s.hands[my], legal = legalTiles(hand, s.trick, c.trump);
     let hint = 'Pick a raised domino.';
     if (s.trick.length && c.trump.mode !== 'sevens') {
-      const led = suitOf(s.trick[0].tile, c.trump);
+      const led = ledSuit(s.trick[0].tile, c.trump);
       hint = legal.length < hand.length ? 'You must follow ' + suitWord(led) + '.' : 'You can\u2019t follow ' + suitWord(led) + ', so any domino goes.';
     } else if (c.trump.mode === 'sevens') hint = 'Play the domino closest to a total of 7.';
     return '<div class="panel card"><p class="lead">Your turn</p><p style="margin:0">' + hint + '</p></div>';
