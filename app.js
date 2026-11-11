@@ -31,7 +31,7 @@ function toast(msg) {
 /* ---------- dominoes ---------- */
 const PIPS = { 0: [], 1: [[0, 0]], 2: [[-1, -1], [1, 1]], 3: [[-1, -1], [0, 0], [1, 1]], 4: [[-1, -1], [1, -1], [-1, 1], [1, 1]], 5: [[-1, -1], [1, -1], [0, 0], [-1, 1], [1, 1]], 6: [[-1, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [1, 1]] };
 function tileSVG(t, cls) {
-  const half = (n, cy) => PIPS[n].map(p => '<circle cx="' + (25 + p[0] * 12) + '" cy="' + (cy + p[1] * 11) + '" r="4.3"/>').join('');
+  const half = (n, cy) => '<g class="pp n' + n + '">' + PIPS[n].map(p => '<circle cx="' + (25 + p[0] * 12) + '" cy="' + (cy + p[1] * 11) + '" r="4.3"/>').join('') + '</g>';
   return '<svg class="dom ' + (cls || '') + '" viewBox="0 0 50 96" aria-hidden="true"><rect class="dbody" x="1.5" y="1.5" width="47" height="93" rx="7"/>' +
     '<line class="dline" x1="9" y1="48" x2="41" y2="48"/><g class="dpips">' + half(hi(t), 24) + half(lo(t), 72) + '</g><circle class="dpin" cx="25" cy="48" r="2.2"/></svg>';
 }
@@ -643,11 +643,59 @@ csDlg.addEventListener('click', e => {
   drillRender();
 });
 
+
+/* ---------- colors: a private, per-browser look ---------- */
+const LOOK_DEFAULT = { domino: 'ivory', pips: 'plain', table: 'blue', contrast: false };
+const DOMINOES = [['ivory', 'Ivory', '#f3e9d0'], ['ebony', 'Ebony', '#26231f'], ['crimson', 'Crimson', '#a82d2d'], ['cobalt', 'Cobalt', '#2451a3'], ['emerald', 'Emerald', '#1d7a4c'], ['amethyst', 'Amethyst', '#6b3fa0']];
+const TABLES = [['blue', 'Blue', '#1d4380'], ['green', 'Green', '#1f6b45'], ['red', 'Red', '#7c2333'], ['purple', 'Purple', '#5a2f86']];
+function getLook() {
+  let v = {}; try { v = JSON.parse(store.get('g42-look') || '{}') || {}; } catch (e) { }
+  const L = Object.assign({}, LOOK_DEFAULT, v);
+  if (!DOMINOES.some(d => d[0] === L.domino)) L.domino = 'ivory';
+  if (!TABLES.some(d => d[0] === L.table)) L.table = 'blue';
+  if (L.pips !== 'color') L.pips = 'plain';
+  L.contrast = !!L.contrast;
+  return L;
+}
+function applyLook() {   // high contrast overrides what it must; the stored choices are kept for when it is switched off
+  const L = getLook(), r = document.documentElement, hc = L.contrast;
+  const dom = hc ? (L.domino === 'ebony' ? 'ebony' : 'ivory') : L.domino;
+  r.dataset.contrast = hc ? 'high' : 'normal';
+  r.dataset.domino = dom;
+  r.dataset.pips = (!hc && L.pips === 'color' && (dom === 'ivory' || dom === 'ebony')) ? 'color' : 'plain';
+  r.dataset.table = hc ? 'night' : L.table;
+}
+function lookHTML() {
+  const L = getLook(), hc = L.contrast, pipsOk = !hc && (L.domino === 'ivory' || L.domino === 'ebony');
+  const sw = (group, items, cur, off) => '<div class="swatches" role="group">' + items.map(i => '<button class="sw" data-look="' + group + '" data-v="' + i[0] + '" aria-pressed="' + (cur === i[0]) + '"' + (off(i[0]) ? ' disabled' : '') + '><i style="background:' + i[2] + '"></i>' + i[1] + '</button>').join('') + '</div>';
+  return '<h2>Colors</h2><p class="look-note" style="margin-top:0">These choices are just for you. Nobody else sees them, and they stay in this browser.</p>' +
+    '<div class="look-preview">' + ['65', '43', '52', '10', '66'].map(t => tileSVG(t)).join('') + '</div>' +
+    '<h3>Dominoes</h3>' + sw('domino', DOMINOES, L.domino, v => hc && v !== 'ivory' && v !== 'ebony') +
+    '<h3>Pips</h3><span class="seg"><button data-look="pips" data-v="plain" aria-pressed="' + (L.pips === 'plain' || !pipsOk) + '">Plain</button><button data-look="pips" data-v="color" aria-pressed="' + (L.pips === 'color' && pipsOk) + '"' + (pipsOk ? '' : ' disabled') + '>Colored by number</button></span>' +
+    '<p class="look-note">' + (pipsOk ? 'Each number gets its own color: 1 blue, 2 green, 3 red, 4 purple, 5 orange, 6 teal. The pips are still there, so color is a helper, never the only clue.' : (hc ? 'Colored pips are off in high contrast, so nothing depends on color alone.' : 'Colored pips work on ivory and ebony dominoes.')) + '</p>' +
+    '<h3>Table</h3>' + sw('table', TABLES, L.table, () => hc) +
+    '<h3>High contrast</h3><label class="opt" style="border:0;padding:0"><span>Bold black-and-white dominoes, a dark table, and different shapes for the two teams.<small>Uses ivory or ebony dominoes, turns off colored pips, and overrides the table color while it is on.</small></span><input class="switch" type="checkbox" data-look="contrast"' + (hc ? ' checked' : '') + ' aria-label="High contrast"></label>';
+}
+const lookDlg = document.getElementById('look'), lookBody = document.getElementById('lookBody');
+function setLook(patch) {
+  store.set('g42-look', JSON.stringify(Object.assign(getLook(), patch)));
+  applyLook(); lookBody.innerHTML = lookHTML();
+}
+document.getElementById('lookBtn').addEventListener('click', () => { lookBody.innerHTML = lookHTML(); lookDlg.showModal(); });
+document.getElementById('lookClose').addEventListener('click', () => lookDlg.close());
+document.getElementById('lookReset').addEventListener('click', () => { store.set('g42-look', JSON.stringify(LOOK_DEFAULT)); applyLook(); lookBody.innerHTML = lookHTML(); });
+lookDlg.addEventListener('click', e => {
+  const b = e.target.closest('button[data-look]'); if (!b || b.disabled) return;
+  setLook({ [b.dataset.look]: b.dataset.v });
+});
+lookDlg.addEventListener('change', e => { const c = e.target; if (c.dataset && c.dataset.look === 'contrast') setLook({ contrast: c.checked }); });
+
 /* ---------- boot ---------- */
 document.getElementById('rulesBtn').addEventListener('click', () => document.getElementById('rules').showModal());
 document.getElementById('rulesClose').addEventListener('click', () => document.getElementById('rules').close());
 
 function boot() {
+  applyLook();
   let id = store.get('g42-id');
   if (!id || !/^[A-Za-z0-9_-]{8,40}$/.test(id)) { const rnd = (window.crypto && crypto.getRandomValues) ? Array.from(crypto.getRandomValues(new Uint8Array(12))) : Array.from({ length: 12 }, () => Math.floor(Math.random() * 256));
     id = 'g' + rnd.map(b => b.toString(36).padStart(2, '0')).join('').slice(0, 20); store.set('g42-id', id); }

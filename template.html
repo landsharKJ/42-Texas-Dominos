@@ -19,11 +19,14 @@
   <div class="status" id="status" aria-live="polite"></div>
   <label class="who">Your name <input id="nick" maxlength="14" placeholder="Player" autocomplete="off"></label>
   <button class="linkbtn" id="cheatBtn" type="button">Cheat sheet</button>
+  <button class="linkbtn" id="lookBtn" type="button">Colors</button>
   <button class="linkbtn" id="rulesBtn" type="button">Rules</button>
 </header>
 <main id="app"></main>
 <footer class="foot" id="foot"></footer>
 <div class="toast" id="toast" role="status" hidden></div>
+
+<dialog id="look"><div class="in"><div id="lookBody"></div><div class="row" style="margin-top:14px"><button class="btn primary" id="lookClose" type="button">Done</button><button class="btn" id="lookReset" type="button">Reset to defaults</button></div></div></dialog>
 
 <dialog id="cheat"><div class="in"><div id="cheatBody"></div><div class="row" style="margin-top:14px"><button class="btn primary" id="cheatClose" type="button">Back to the table</button></div></div></dialog>
 
@@ -46,6 +49,8 @@
     <li><b>Doubles</b> as trump: all seven doubles form the trump suit, 6-6 highest.</li>
     <li><b>Follow me</b>: no trump. The higher end of the led domino sets the suit, and both ends can follow it.</li>
   </ul>
+  <h3>Colors</h3>
+  <p>The <b>Colors</b> button changes how the table looks for you only: domino color, colored pips (each number gets its own color), table color, and a high-contrast mode with bold outlines and shapes as well as colors for the two teams. Nobody else sees your choices.</p>
   <h3>Learning aids</h3>
   <p>The <b>Cheat sheet</b> button (top right) opens a one-page reminder of how counting works, how suits follow, and the suit names, with a small counting drill. While you play, three more aids can help: a suggested domino with the reason for it, a plain-English explanation after every trick, and small badges showing which of your dominoes are worth count points. Like bid suggestions, they use only your own dominoes and what has already been played. You can hide them for yourself at any time, and the host can turn them off for the whole table in the lobby.</p>
   <h3>Bid suggestions</h3>
