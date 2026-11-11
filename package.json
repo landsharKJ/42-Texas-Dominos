@@ -1,6 +1,6 @@
 {
   "name": "texas-42-table",
-  "version": "1.0.6",
+  "version": "1.0.9",
   "description": "A private browser table for Texas 42 dominoes",
   "main": "server.js",
   "scripts": {

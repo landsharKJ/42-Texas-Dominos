@@ -103,14 +103,14 @@ function trumpLabel(tr) {
 }
 
 /* ---- table state ---- */
-const DEFAULT_OPTS = { marksToWin: 7, forceDealer: true, nello: true, splash: true, plunge: true, followMe: true, sevens: true };
+const DEFAULT_OPTS = { marksToWin: 7, bidHints: true, playHints: true, forceDealer: true, nello: true, splash: true, plunge: true, followMe: true, sevens: true };
 function newTable(hostId) {
   return {
     v: 0, phase: 'lobby', hostId, opts: Object.assign({}, DEFAULT_OPTS),
     seats: [0, 1, 2, 3].map(() => ({ id: null, name: '', bot: false })),
     marks: [0, 0], handNo: 0, dealer: 0, turn: 0, hands: {}, bids: [], high: null,
     contract: null, trick: [], trickNo: 0, pending: false, trickWinner: -1, trickPts: 0,
-    points: [0, 0], tricks: [0, 0], played: [], lastTrick: null, result: null, log: []
+    points: [0, 0], tricks: [0, 0], played: [], taken: [], lastTrick: null, result: null, log: []
   };
 }
 const seatName = (s, i) => (s.seats[i] && s.seats[i].name) || ('Seat ' + (i + 1));
@@ -124,7 +124,7 @@ function startHand(s) {
   for (let i = 0; i < 4; i++) s.hands[i] = sortHand(d.slice(i * 7, i * 7 + 7));
   s.phase = 'bidding'; s.bids = []; s.high = null; s.turn = (s.dealer + 1) % 4;
   s.contract = null; s.trick = []; s.trickNo = 0; s.pending = false; s.trickWinner = -1; s.trickPts = 0;
-  s.points = [0, 0]; s.tricks = [0, 0]; s.played = []; s.lastTrick = null; s.result = null;
+  s.points = [0, 0]; s.tricks = [0, 0]; s.played = []; s.taken = []; s.lastTrick = null; s.result = null;
   say(s, 'Hand ' + s.handNo + ': ' + seatName(s, s.dealer) + ' deals.');
 }
 function startPlay(s, leader) {
@@ -300,12 +300,14 @@ function reduce(state, action, actor) {
       need(me >= 0 || isHost, 'Spectators cannot do that');
       const w = s.trickWinner;
       s.lastTrick = { plays: s.trick, winner: w, pts: s.trickPts };
+      s.taken = (s.taken || []).concat([{ plays: s.trick, winner: w, pts: s.trickPts }]);   // the hand's trick history, shown on the score card
       s.trick = []; s.pending = false;
       const o = outcome(s);
       if (o.done) {
+        s.taken = [];   // hand over: the history goes away
         const c = s.contract, dt = team(c.seat), m = bidMarks(c.bid), wt = o.made ? dt : 1 - dt;
         s.marks[wt] += m;
-        s.result = { made: o.made, declarer: c.seat, bid: c.bid, trump: c.trump, team: wt, marks: m, points: s.points.slice(), tricks: s.tricks.slice() };
+        s.result = { played: s.tricks[0] + s.tricks[1], made: o.made, declarer: c.seat, bid: c.bid, trump: c.trump, team: wt, marks: m, points: s.points.slice(), tricks: s.tricks.slice() };
         say(s, seatName(s, c.seat) + (o.made ? ' makes ' : ' is set on ') + bidLabel(c.bid) + '. Team ' + (wt + 1) + ' +' + m + '.');
         s.phase = s.marks[wt] >= s.opts.marksToWin ? 'gameover' : 'handover';
       } else { s.trickNo++; s.turn = w; }
@@ -335,26 +337,29 @@ function beatsWhenLed(u, t, tr) {   // if t is led, could u (played later) take 
 const isBossLead = (t, unseen, tr) => !unseen.some(u => beatsWhenLed(u, t, tr));
 function currentWinner(trick, tr) { const w = trickWinner(trick, tr); return trick.find(p => p.seat === w); }
 
-function pickTile(c) {
+/* Chooses a domino AND says why. `why` is a short code the interface turns into a plain-English reason.
+   It reads only the player's own hand and public information (the trick so far, what has been played, the contract). */
+function decide(c) {
   const { hand, trick, tr, seat, declarer, kind, played, active } = c;
   const legal = legalTiles(hand, trick, tr);
-  if (legal.length === 1) return legal[0];
+  const pick = (t, w) => ({ t, w });
+  if (legal.length === 1) return pick(legal[0], 'only');
   const myTeam = seat % 2, attacking = myTeam === declarer % 2;
   if (kind === 'nello') {
     const wins = t => trickWinner(trick.concat([{ seat, tile: t }]), tr) === seat;
-    if (!trick.length) return best(legal, t => -pipsOf(t));
+    if (!trick.length) return pick(best(legal, t => -pipsOf(t)), 'nello-lead');
     const safe = legal.filter(t => !wins(t));
-    if (safe.length) return best(safe, t => pipsOf(t));
-    return best(legal, t => -pipsOf(t));
+    if (safe.length) return pick(best(safe, t => pipsOf(t)), 'nello-shed');
+    return pick(best(legal, t => -pipsOf(t)), 'nello-forced');
   }
   if (tr.mode === 'sevens') {
-    if (!trick.length) return best(legal, t => -sevenDist(t));
+    if (!trick.length) return pick(best(legal, t => -sevenDist(t)), 'sevens-lead');
     const cur = trick.reduce((b, p) => sevenDist(p.tile) < sevenDist(b.tile) ? p : b, trick[0]);
     const last = trick.length === active - 1;
-    if (cur.seat % 2 === myTeam) return best(legal, t => sevenDist(t));
+    if (cur.seat % 2 === myTeam) return pick(best(legal, t => sevenDist(t)), 'sevens-partner');
     const beat = legal.filter(t => sevenDist(t) < sevenDist(cur.tile));
-    if (beat.length) return last ? best(beat, t => sevenDist(t)) : best(beat, t => -sevenDist(t));
-    return best(legal, t => sevenDist(t));
+    if (beat.length) return last ? pick(best(beat, t => sevenDist(t)), 'sevens-beat-last') : pick(best(beat, t => -sevenDist(t)), 'sevens-beat');
+    return pick(best(legal, t => sevenDist(t)), 'sevens-dump');
   }
   const seen = new Set(hand);
   played.forEach(t => seen.add(t)); trick.forEach(p => seen.add(p.tile));
@@ -366,24 +371,74 @@ function pickTile(c) {
       if (trumps.length) {
         const top = best(trumps, t => rankIn(t, TR, tr));
         const unseenTr = unseen.filter(t => isTrumpTile(t, tr)).length;
-        if (unseenTr > 0 && (trumps.length >= 2 || isBossLead(top, unseen, tr))) return top;
+        if (unseenTr > 0 && (trumps.length >= 2 || isBossLead(top, unseen, tr))) return pick(top, 'lead-trump');
       }
     }
     const bosses = legal.filter(t => !isTrumpTile(t, tr) && isBossLead(t, unseen, tr));
-    if (bosses.length) return best(bosses, t => countOf(t) * 10 + powerOf(t, tr) / 10);
+    if (bosses.length) return pick(best(bosses, t => countOf(t) * 10 + powerOf(t, tr) / 10), 'lead-boss');
     const tb = legal.filter(t => isBossLead(t, unseen, tr));
-    if (tb.length && attacking) return best(tb, t => countOf(t));
-    return best(legal, dump);
+    if (tb.length && attacking) return pick(best(tb, t => countOf(t)), 'lead-boss-trump');
+    return pick(best(legal, dump), 'lead-low');
   }
   const cur = currentWinner(trick, tr);
   if (cur.seat % 2 === myTeam) {
     const last = trick.length === active - 1;
     const safe = last || !unseen.some(u => trickWinner(trick.concat([{ seat: -1, tile: u }]), tr) === -1);
-    return safe ? best(legal, t => countOf(t) * 100 - powerOf(t, tr)) : best(legal, dump);
+    return safe ? pick(best(legal, t => countOf(t) * 100 - powerOf(t, tr)), last ? 'feed-last' : 'feed-safe') : pick(best(legal, dump), 'partner-dump');
   }
   const winners = legal.filter(t => trickWinner(trick.concat([{ seat, tile: t }]), tr) === seat);
-  if (winners.length) return best(winners, t => -powerOf(t, tr));
-  return best(legal, dump);
+  if (winners.length) return pick(best(winners, t => -powerOf(t, tr)), 'cheapest-win');
+  return pick(best(legal, dump), 'cannot-win');
+}
+const pickTile = c => decide(c).t;
+const tileName = t => hi(t) + '-' + lo(t);
+const nameWith = (t, f) => (f !== undefined && (lo(t) === f || hi(t) === f)) ? f + '-' + (lo(t) === f ? hi(t) : lo(t)) : tileName(t);
+
+/* The suggestion a player can see: built from their own hand + public information only. */
+function suggestPlay(s, seat) {
+  const c = s.contract;
+  return decide({
+    hand: s.hands[seat], trick: s.trick, tr: c.trump, seat, declarer: c.seat,
+    kind: c.bid.kind === 'nello' ? 'nello' : 'reg', played: new Set(s.played), active: c.sitOut == null ? 4 : 3
+  });
+}
+
+/* A plain-English account of a finished trick: the suit, who followed, why the winner won, and what it was worth. */
+function explainTrick(plays, tr, nm, bid) {
+  const out = [], win = trickWinner(plays, tr), wp = plays.find(p => p.seat === win);
+  const lead = plays[0], led = ledSuit(lead.tile, tr), cnt = plays.filter(p => countOf(p.tile) > 0);
+  const F = (led !== TR && led !== 7) ? led : undefined;                 // the suit being played
+  const N = t => nameWith(t, isTrumpTile(t, tr) && tr.mode === 'suit' ? tr.n : F);   // trumps are named from the trump number
+  const nelloOrPts = bid && bid.kind === 'nello' ? 'nello' : 'pts';
+  if (tr.mode === 'sevens') {
+    out.push('Sevens has no suits. The domino whose spots add closest to 7 wins, and a tie goes to whoever played first.');
+    out.push(plays.map(p => nm(p.seat) + ' played ' + N(p.tile) + ' (total ' + pipsOf(p.tile) + ', ' + sevenDist(p.tile) + ' away)').join('; ') + '.');
+    out.push(nm(win) + '’s ' + N(wp.tile) + ' was closest to 7.');
+  } else {
+    let ledTxt;
+    if (led === TR) ledTxt = nm(lead.seat) + ' led a trump (' + N(lead.tile) + '), so everyone had to play a trump if they had one.';
+    else if (led === 7) ledTxt = nm(lead.seat) + ' led a double (' + N(lead.tile) + '). In this nello doubles are their own suit.';
+    else ledTxt = nm(lead.seat) + ' led the ' + N(lead.tile) + ', so the suit is ' + SUIT_NAMES[led] + (lo(lead.tile) === hi(lead.tile) ? ' (a double leads its own number).' : ' (the higher end sets the suit).');
+    out.push(ledTxt);
+    const rest = plays.slice(1).map(p => {
+      const f = follows(p.tile, led, tr);
+      if (f) return nm(p.seat) + ' followed with the ' + N(p.tile);
+      if (isTrumpTile(p.tile, tr)) return nm(p.seat) + ' had none to follow, so played the trump ' + N(p.tile);
+      return nm(p.seat) + ' had none to follow and threw the ' + N(p.tile);
+    });
+    if (rest.length) out.push(rest.join('. ') + '.');
+    const trumps = plays.filter(p => isTrumpTile(p.tile, tr));
+    if (trumps.length && led !== TR) out.push('A trump beats every other suit, so ' + nm(win) + '’s ' + N(wp.tile) + ' won' + (trumps.length > 1 ? ' (the highest trump played)' : '') + '.');
+    else if (led === TR) out.push(nm(win) + '’s ' + N(wp.tile) + ' was the highest trump' + (lo(wp.tile) === hi(wp.tile) ? ': the double of the trump number is always the top trump.' : '; trumps rank by their other end.'));
+    else if (lo(wp.tile) === hi(wp.tile)) out.push(nm(win) + '’s double ' + N(wp.tile) + ' is the highest domino of its suit, so it won.');
+    else if (plays.length > 1 && plays.filter(p => follows(p.tile, led, tr)).length > 1) out.push('No trump was played, so the highest ' + SUIT_NAMES[led].replace(/s$/, '') + ' won. Inside a suit, dominoes rank by their other end, so ' + nm(win) + '’s ' + N(wp.tile) + ' beat the rest.');
+    else out.push('Nobody else could follow suit, so ' + nm(lead.seat) + '’s ' + N(wp.tile) + ' won.');
+  }
+  if (nelloOrPts === 'pts') {
+    const pts = 1 + cnt.reduce((a, p) => a + countOf(p.tile), 0);
+    out.push('Worth ' + pts + (pts === 1 ? ' point' : ' points') + ': 1 for the trick' + (cnt.length ? ' plus count: ' + cnt.map(p => tileName(p.tile) + ' (' + countOf(p.tile) + ')').join(', ') : ' and no count dominoes in it') + '.');
+  }
+  return out;
 }
 
 function simulate(handsIn, tr, leader, sitOut, declarer, kind) {
@@ -463,11 +518,14 @@ function pSpecial(kind, hand, seat, opts, N) {
   if (kind === 'nello') return Math.max(nok.suit, nok.high, nok.low) / N;
   return ok / N;
 }
-function botBid(s, seat) {
+/* Works out what a sensible bid is for ONE seat. It reads only that seat's own dominoes plus public information
+   (the bids so far, the dealer, the house rules) -- never anyone else's hand. Both the bots and the player-facing
+   "suggested bid" use it, and a test checks that no other hand is ever touched. */
+function analyzeBid(s, seat) {
   const hand = s.hands[seat];
   const avail = availableBids(hand, s.high && s.high.bid, s.opts);
-  const forced = s.opts.forceDealer && seat === s.dealer && s.bids.length === 3 && !s.high;
-  const partnerHigh = s.high && s.high.seat === (seat + 2) % 4;
+  const forced = !!(s.opts.forceDealer && seat === s.dealer && s.bids.length === 3 && !s.high);
+  const partnerHigh = !!(s.high && s.high.seat === (seat + 2) % 4);
   const reg = evalRegular(hand, seat, s.opts, 60);
   const cache = {};
   const spec = k => cache[k] !== undefined ? cache[k] : (cache[k] = pSpecial(k, hand, seat, s.opts, 60));
@@ -475,14 +533,28 @@ function botBid(s, seat) {
   // and much stricter above 36 (those bids need nearly a perfect hand). Marks and specials are all-or-nothing, so stricter still.
   const thr = b => (b.kind === 'pts' ? 0.6 + (b.pts - 30) * 0.025 + (b.pts > 36 ? 0.1 : 0)
     : { marks: 0.85, nello: 0.9, sevens: 0.88, splash: 0.85, plunge: 0.85 }[b.kind]) + (partnerHigh ? 0.15 : 0);
+  // honest chance of making a bid (no safety margin), and the trump that gives it
+  const chance = b => {
+    if (b.kind === 'pts' || b.kind === 'marks') {
+      const T = pRegular(reg, b).T;
+      const arr = reg.find(r => r.T === T).arr;
+      const ok = arr.filter(x => b.kind === 'pts' ? x.p >= b.pts : x.all).length;
+      return { p: ok / arr.length, T };
+    }
+    return { p: spec(b.kind), T: null };
+  };
   let pick = null;
   for (const b of avail.slice().sort((x, y) => bidValue(y) - bidValue(x))) {
     const p = (b.kind === 'pts' || b.kind === 'marks') ? pRegular(reg, b).p : spec(b.kind);
     if (p >= thr(b)) { pick = b; break; }
   }
   if (!pick && forced) pick = avail.find(b => b.kind === 'pts' && b.pts === 30) || avail[0];
-  return pick;
+  const lowest = avail.slice().sort((x, y) => bidValue(x) - bidValue(y))[0] || null;
+  const out = { pick, forced, partnerHigh, lowest: lowest && Object.assign({ bid: lowest }, chance(lowest)) };
+  if (pick) Object.assign(out, chance(pick));
+  return out;
 }
+const botBid = (s, seat) => analyzeBid(s, seat).pick;
 function botTrump(s, seat) {
   const b = s.contract.bid;
   if (b.kind === 'nello') {
@@ -512,4 +584,4 @@ function pendingBotAction(s) {
   return null;
 }
 
-if (typeof module !== 'undefined') module.exports = { ledSuit, follows, rankIn, isTrumpTile, botBid, botTrump, seatOfId, ALL, TR, SUIT_NAMES, lo, hi, isDbl, pipsOf, countOf, suitOf, trickWinner, legalTiles, availableBids, bidValue, bidLabel, reduce, newTable, pendingBotAction, simulate, sampleHands, team, outcome, DEFAULT_OPTS };
+if (typeof module !== 'undefined') module.exports = { nameWith, decide, suggestPlay, explainTrick, tileName, analyzeBid, ledSuit, follows, rankIn, isTrumpTile, botBid, botTrump, seatOfId, ALL, TR, SUIT_NAMES, lo, hi, isDbl, pipsOf, countOf, suitOf, trickWinner, legalTiles, availableBids, bidValue, bidLabel, reduce, newTable, pendingBotAction, simulate, sampleHands, team, outcome, DEFAULT_OPTS };

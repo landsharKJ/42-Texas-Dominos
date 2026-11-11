@@ -18,17 +18,22 @@
   <div class="brand"><span class="brand-num">42</span><span class="brand-sub">Texas dominoes</span></div>
   <div class="status" id="status" aria-live="polite"></div>
   <label class="who">Your name <input id="nick" maxlength="14" placeholder="Player" autocomplete="off"></label>
+  <button class="linkbtn" id="cheatBtn" type="button">Cheat sheet</button>
   <button class="linkbtn" id="rulesBtn" type="button">Rules</button>
 </header>
 <main id="app"></main>
 <footer class="foot" id="foot"></footer>
 <div class="toast" id="toast" role="status" hidden></div>
 
+<dialog id="cheat"><div class="in"><div id="cheatBody"></div><div class="row" style="margin-top:14px"><button class="btn primary" id="cheatClose" type="button">Back to the table</button></div></div></dialog>
+
 <dialog id="rules"><div class="in">
   <h2>How this table plays</h2>
   <p>Four players, two partnerships. Partners sit across from each other. First team to the marks target wins.</p>
   <h3>Counting</h3>
   <p>Each hand is worth 42 points: 1 per trick, plus the count dominoes. 5-5 and 6-4 are worth 10 each. 5-0, 4-1 and 3-2 are worth 5 each.</p>
+  <h3>Reading the table</h3>
+  <p>Under each team on the score card you can open the tricks it has won this hand. Each trick lists the dominoes in the order they were played, the winning domino is outlined in gold, and count dominoes (worth 5 or 10) have a gold underline. The list clears when the hand ends.</p>
   <h3>Bidding</h3>
   <p>Starting left of the dealer, everyone gets one turn to bid or pass. Bids run from 30 to 41 points, then 42 (1 mark) and 84 (2 marks). A mark bid means your team must win every trick. Make your bid and your team scores 1 mark (or the marks bid). Get set and the other team scores them. The hand stops as soon as the result is decided.</p>
   <h3>Suits and trump</h3>
@@ -41,6 +46,10 @@
     <li><b>Doubles</b> as trump: all seven doubles form the trump suit, 6-6 highest.</li>
     <li><b>Follow me</b>: no trump. The higher end of the led domino sets the suit, and both ends can follow it.</li>
   </ul>
+  <h3>Learning aids</h3>
+  <p>The <b>Cheat sheet</b> button (top right) opens a one-page reminder of how counting works, how suits follow, and the suit names, with a small counting drill. While you play, three more aids can help: a suggested domino with the reason for it, a plain-English explanation after every trick, and small badges showing which of your dominoes are worth count points. Like bid suggestions, they use only your own dominoes and what has already been played. You can hide them for yourself at any time, and the host can turn them off for the whole table in the lobby.</p>
+  <h3>Bid suggestions</h3>
+  <p>When it’s your turn to bid, a suggested bid appears with its estimated chance of success, and the suggested button is outlined in gold. It is worked out only from your own dominoes and the bids made so far, never from anyone else’s hand. You can hide it for yourself at any time, and the host can turn it off for the whole table in the lobby.</p>
   <h3>Specials</h3>
   <ul>
     <li><b>Nello</b>: bid 1 or 2 marks, and lose every trick. Your partner sits out, so each trick has three dominoes. When you win the bid you choose how doubles count: as their own suit, as the highest of their number, or as the lowest of their number.</li>
