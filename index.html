@@ -15,7 +15,7 @@
   --ui:"Work Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   --bg:#eaeef5;--panel:#ffffff;--panel-2:#f3f5fa;--text:#16202f;--muted:#566174;--line:#d2d9e6;
   --gold:#f0b846;--gold-ink:#7a4f00;--us:#e0a22a;--them:#e0604f;--danger:#b3261e;
-  --felt:#1d4380;--felt-hi:#2b5eaa;--felt-lo:#15305b;--wood:#4a3220;--wood-hi:#6a4a30;
+  --felt:#1d4380;--felt-hi:#2b5eaa;--felt-lo:#15305b;--wood:#4a3220;--wood-hi:#6a4a30;--back:#8a6a44;--back-edge:#5a432a;
   --ivory:#f3e9d0;--ivory-edge:#b9a77c;--ink:#1d1a16;--brass:#b08a3e;
   --dom:#f3e9d0;--dom-edge:#b9a77c;--pip:#1d1a16;--dom-line:#1d1a16;--dom-pin:#b08a3e;
   --slate:#1f2b33;--chalk:#eef2ee;--chalk-dim:#a9b6b0;
@@ -131,8 +131,8 @@ main{max-width:1180px;margin:0 auto;padding:18px}
 .slot.win .dbody{stroke:var(--gold);stroke-width:4}
 .slot .dom.fresh{animation:drop .28s ease-out}
 @keyframes drop{from{transform:translateY(-22px) scale(1.1);opacity:0}to{transform:none;opacity:1}}
-.back-body{fill:#8a6a44;stroke:#5a432a;stroke-width:1.5}
-.back-line{stroke:#5a432a;stroke-width:1.3}
+.back-body{fill:var(--back);stroke:var(--back-edge);stroke-width:1.5}
+.back-line{stroke:var(--back-edge);stroke-width:1.3}
 
 /* my rack */
 .rack{margin-top:14px;background:linear-gradient(var(--wood-hi),var(--wood));border-radius:16px;padding:16px 14px 14px;display:flex;gap:7px;justify-content:center;flex-wrap:wrap;min-height:calc(var(--tw)*1.92 + 44px);box-shadow:inset 0 3px 10px rgba(0,0,0,.4)}
@@ -312,6 +312,15 @@ html[data-contrast="high"] .look-preview{--felt:#0d141c;--felt-hi:#18222e;--felt
 .sw i{display:block;width:34px;height:22px;border-radius:6px;border:2px solid rgba(0,0,0,.35)}
 .look-note{font-size:13px;color:var(--muted);margin:4px 0 0}
 
+/* the rail: the rim of the table, your rack, the score slate border, and the backs of hidden dominoes.
+   Wood is the default for blue and green; red and purple use a muted shade of the table; graphite is neutral. */
+html[data-rail="match"][data-table="blue"]{--wood:#223f6b;--wood-hi:#2e5088;--back:#4f72ad;--back-edge:#2a4168}
+html[data-rail="match"][data-table="green"]{--wood:#1a4a34;--wood-hi:#2b6a4c;--back:#4c8d6b;--back-edge:#2a5a42}
+html[data-rail="match"][data-table="red"]{--wood:#632a3b;--wood-hi:#74364a;--back:#a5667a;--back-edge:#613545}
+html[data-rail="match"][data-table="purple"]{--wood:#46326b;--wood-hi:#5b4486;--back:#8d74bc;--back-edge:#523f78}
+html[data-rail="graphite"]{--wood:#3b3c42;--wood-hi:#585a63;--back:#6e7079;--back-edge:#42434a}
+.look-preview{border:8px solid var(--wood);box-shadow:inset 0 0 0 2px var(--wood-hi)}
+
 </style>
 </head>
 <body>
@@ -351,7 +360,7 @@ html[data-contrast="high"] .look-preview{--felt:#0d141c;--felt-hi:#18222e;--felt
     <li><b>Follow me</b>: no trump. The higher end of the led domino sets the suit, and both ends can follow it.</li>
   </ul>
   <h3>Colors</h3>
-  <p>The <b>Colors</b> button changes how the table looks for you only: domino color, colored pips (each number gets its own color), table color, and a high-contrast mode with bold outlines and shapes as well as colors for the two teams. Nobody else sees your choices.</p>
+  <p>The <b>Colors</b> button changes how the table looks for you only: domino color, colored pips (each number gets its own color), table color, the color of the rail around the table and your rack, and a high-contrast mode with bold outlines and shapes as well as colors for the two teams. Nobody else sees your choices.</p>
   <h3>Learning aids</h3>
   <p>The <b>Cheat sheet</b> button (top right) opens a one-page reminder of how counting works, how suits follow, and the suit names, with a small counting drill. While you play, three more aids can help: a suggested domino with the reason for it, a plain-English explanation after every trick, and small badges showing which of your dominoes are worth count points. Like bid suggestions, they use only your own dominoes and what has already been played. You can hide them for yourself at any time, and the host can turn them off for the whole table in the lobby.</p>
   <h3>Bid suggestions</h3>
@@ -1014,7 +1023,7 @@ function tallySVG(n) {
 /* ---------- shared table connection ----------
    Tries a WebSocket first. If that fails to hold, falls back to plain HTTP (event stream down, POST up),
    which works through nearly every network. Either way, a silent failure is turned into a visible message. */
-const BUILD = '1.1.0';
+const BUILD = '1.1.1';
 let tp = new URLSearchParams(location.search).get('tp') === 'sse' ? 'sse' : 'ws';
 let es = null, wsFails = 0, lastRx = Date.now(), lastIssue = '';
 const qs = () => 'id=' + encodeURIComponent(S.realId) + '&pw=' + encodeURIComponent(store.get('g42-pw') || '');
@@ -1605,7 +1614,8 @@ csDlg.addEventListener('click', e => {
 
 
 /* ---------- colors: a private, per-browser look ---------- */
-const LOOK_DEFAULT = { domino: 'ivory', pips: 'plain', table: 'blue', contrast: false };
+const LOOK_DEFAULT = { domino: 'ivory', pips: 'plain', table: 'blue', rail: 'auto', contrast: false };
+const RAILS = [['auto', 'Automatic', 'linear-gradient(90deg,#6a4a30 50%,#5b4486 50%)'], ['wood', 'Wood', '#6a4a30'], ['match', 'Matching', '#5b4486'], ['graphite', 'Graphite', '#585a63']];
 const DOMINOES = [['ivory', 'Ivory', '#f3e9d0'], ['ebony', 'Ebony', '#26231f'], ['crimson', 'Crimson', '#a82d2d'], ['cobalt', 'Cobalt', '#2451a3'], ['emerald', 'Emerald', '#1d7a4c'], ['amethyst', 'Amethyst', '#6b3fa0']];
 const TABLES = [['blue', 'Blue', '#1d4380'], ['green', 'Green', '#1f6b45'], ['red', 'Red', '#7c2333'], ['purple', 'Purple', '#5a2f86']];
 function getLook() {
@@ -1614,6 +1624,7 @@ function getLook() {
   if (!DOMINOES.some(d => d[0] === L.domino)) L.domino = 'ivory';
   if (!TABLES.some(d => d[0] === L.table)) L.table = 'blue';
   if (L.pips !== 'color') L.pips = 'plain';
+  if (!RAILS.some(d => d[0] === L.rail)) L.rail = 'auto';
   L.contrast = !!L.contrast;
   return L;
 }
@@ -1624,6 +1635,8 @@ function applyLook() {   // high contrast overrides what it must; the stored cho
   r.dataset.domino = dom;
   r.dataset.pips = (!hc && L.pips === 'color' && (dom === 'ivory' || dom === 'ebony')) ? 'color' : 'plain';
   r.dataset.table = hc ? 'night' : L.table;
+  // automatic rail: warm wood suits blue and green; red and purple get a muted shade of the table instead of clashing brown
+  r.dataset.rail = hc ? 'graphite' : (L.rail === 'auto' ? (L.table === 'red' || L.table === 'purple' ? 'match' : 'wood') : L.rail);
 }
 function lookHTML() {
   const L = getLook(), hc = L.contrast, pipsOk = !hc && (L.domino === 'ivory' || L.domino === 'ebony');
@@ -1634,6 +1647,7 @@ function lookHTML() {
     '<h3>Pips</h3><span class="seg"><button data-look="pips" data-v="plain" aria-pressed="' + (L.pips === 'plain' || !pipsOk) + '">Plain</button><button data-look="pips" data-v="color" aria-pressed="' + (L.pips === 'color' && pipsOk) + '"' + (pipsOk ? '' : ' disabled') + '>Colored by number</button></span>' +
     '<p class="look-note">' + (pipsOk ? 'Each number gets its own color: 1 blue, 2 green, 3 red, 4 purple, 5 orange, 6 teal. The pips are still there, so color is a helper, never the only clue.' : (hc ? 'Colored pips are off in high contrast, so nothing depends on color alone.' : 'Colored pips work on ivory and ebony dominoes.')) + '</p>' +
     '<h3>Table</h3>' + sw('table', TABLES, L.table, () => hc) +
+    '<h3>Rail</h3>' + sw('rail', RAILS, L.rail, () => hc) + '<p class="look-note">The rim around the table, your rack, and the backs of hidden dominoes. Automatic uses wood on blue and green, and a muted shade of the table on red and purple.</p>' +
     '<h3>High contrast</h3><label class="opt" style="border:0;padding:0"><span>Bold black-and-white dominoes, a dark table, and different shapes for the two teams.<small>Uses ivory or ebony dominoes, turns off colored pips, and overrides the table color while it is on.</small></span><input class="switch" type="checkbox" data-look="contrast"' + (hc ? ' checked' : '') + ' aria-label="High contrast"></label>';
 }
 const lookDlg = document.getElementById('look'), lookBody = document.getElementById('lookBody');

@@ -645,7 +645,8 @@ csDlg.addEventListener('click', e => {
 
 
 /* ---------- colors: a private, per-browser look ---------- */
-const LOOK_DEFAULT = { domino: 'ivory', pips: 'plain', table: 'blue', contrast: false };
+const LOOK_DEFAULT = { domino: 'ivory', pips: 'plain', table: 'blue', rail: 'auto', contrast: false };
+const RAILS = [['auto', 'Automatic', 'linear-gradient(90deg,#6a4a30 50%,#5b4486 50%)'], ['wood', 'Wood', '#6a4a30'], ['match', 'Matching', '#5b4486'], ['graphite', 'Graphite', '#585a63']];
 const DOMINOES = [['ivory', 'Ivory', '#f3e9d0'], ['ebony', 'Ebony', '#26231f'], ['crimson', 'Crimson', '#a82d2d'], ['cobalt', 'Cobalt', '#2451a3'], ['emerald', 'Emerald', '#1d7a4c'], ['amethyst', 'Amethyst', '#6b3fa0']];
 const TABLES = [['blue', 'Blue', '#1d4380'], ['green', 'Green', '#1f6b45'], ['red', 'Red', '#7c2333'], ['purple', 'Purple', '#5a2f86']];
 function getLook() {
@@ -654,6 +655,7 @@ function getLook() {
   if (!DOMINOES.some(d => d[0] === L.domino)) L.domino = 'ivory';
   if (!TABLES.some(d => d[0] === L.table)) L.table = 'blue';
   if (L.pips !== 'color') L.pips = 'plain';
+  if (!RAILS.some(d => d[0] === L.rail)) L.rail = 'auto';
   L.contrast = !!L.contrast;
   return L;
 }
@@ -664,6 +666,8 @@ function applyLook() {   // high contrast overrides what it must; the stored cho
   r.dataset.domino = dom;
   r.dataset.pips = (!hc && L.pips === 'color' && (dom === 'ivory' || dom === 'ebony')) ? 'color' : 'plain';
   r.dataset.table = hc ? 'night' : L.table;
+  // automatic rail: warm wood suits blue and green; red and purple get a muted shade of the table instead of clashing brown
+  r.dataset.rail = hc ? 'graphite' : (L.rail === 'auto' ? (L.table === 'red' || L.table === 'purple' ? 'match' : 'wood') : L.rail);
 }
 function lookHTML() {
   const L = getLook(), hc = L.contrast, pipsOk = !hc && (L.domino === 'ivory' || L.domino === 'ebony');
@@ -674,6 +678,7 @@ function lookHTML() {
     '<h3>Pips</h3><span class="seg"><button data-look="pips" data-v="plain" aria-pressed="' + (L.pips === 'plain' || !pipsOk) + '">Plain</button><button data-look="pips" data-v="color" aria-pressed="' + (L.pips === 'color' && pipsOk) + '"' + (pipsOk ? '' : ' disabled') + '>Colored by number</button></span>' +
     '<p class="look-note">' + (pipsOk ? 'Each number gets its own color: 1 blue, 2 green, 3 red, 4 purple, 5 orange, 6 teal. The pips are still there, so color is a helper, never the only clue.' : (hc ? 'Colored pips are off in high contrast, so nothing depends on color alone.' : 'Colored pips work on ivory and ebony dominoes.')) + '</p>' +
     '<h3>Table</h3>' + sw('table', TABLES, L.table, () => hc) +
+    '<h3>Rail</h3>' + sw('rail', RAILS, L.rail, () => hc) + '<p class="look-note">The rim around the table, your rack, and the backs of hidden dominoes. Automatic uses wood on blue and green, and a muted shade of the table on red and purple.</p>' +
     '<h3>High contrast</h3><label class="opt" style="border:0;padding:0"><span>Bold black-and-white dominoes, a dark table, and different shapes for the two teams.<small>Uses ivory or ebony dominoes, turns off colored pips, and overrides the table color while it is on.</small></span><input class="switch" type="checkbox" data-look="contrast"' + (hc ? ' checked' : '') + ' aria-label="High contrast"></label>';
 }
 const lookDlg = document.getElementById('look'), lookBody = document.getElementById('lookBody');
